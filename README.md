@@ -15,8 +15,12 @@ Personal_AI/
 │   ├── graph_algorithms.md
 │   ├── binary_search.md
 │   └── trees_and_heaps.md
+├── eval/                     # RAG evaluation benchmark dataset & metrics
+│   ├── questions.json        # 24 benchmark questions covering all notes
+│   └── results.json          # Exported evaluation metrics & rankings
 ├── scripts/
-│   └── index_data.py         # CLI script to (re)index notes & test retrieval
+│   ├── index_data.py         # CLI script to (re)index notes & test retrieval
+│   └── eval_retrieval.py     # Retrieval evaluation harness (Top-1, Top-3 accuracy)
 ├── backend/
 │   ├── main.py               # FastAPI application, CORS setup & router registration
 │   ├── chat.py               # Groq streaming logic (llama-3.3-70b-versatile), multi-turn context, RAG injection
@@ -284,6 +288,26 @@ python scripts/index_data.py --chunk-size 800 --chunk-overlap 150 --query "What 
   `curl -X POST http://localhost:8000/tools/execute -H "Content-Type: application/json" -d '{"name": "suggest_problem", "arguments": {"topic": "dynamic_programming"}}'`
 - **Response Headers:**
   Calls to `POST /chat` automatically include `X-Rag-Chunks` and `X-Rag-Sources` headers showing which notes grounded the AI coach's response.
+
+### 5. Running the Retrieval Evaluation Harness
+A dedicated benchmark evaluation suite tests retrieval accuracy across all DSA note files using local vector search (zero LLM calls or API charges):
+
+```bash
+# Run retrieval evaluation with default parameters (top_k=3, eval/questions.json):
+python scripts/eval_retrieval.py
+
+# Evaluate with custom Top-K and export structured results to JSON:
+python scripts/eval_retrieval.py --top-k 3 --json-out eval/results.json
+
+# Use a custom benchmark questions file:
+python scripts/eval_retrieval.py --questions-path eval/questions.json --top-k 5
+```
+
+**Evaluation Report Includes:**
+- **Top-1 Accuracy**: Percentage of questions where the expected note file is retrieved at Rank 1.
+- **Top-3 Accuracy**: Percentage of questions where the expected note file appears within the Top-3 chunks.
+- **Per-Question PASS/FAIL**: Summary table displaying the target document, top-1 retrieved document, similarity score, and match rank.
+- **Average Similarity**: Average cosine similarity score of top-retrieved context chunks across the benchmark dataset.
 
 ---
 
