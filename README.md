@@ -1,5 +1,7 @@
 # Personal AI — Competitive Programming & DSA Coach
 
+[![CI](https://github.com/AdityaPatel-25/Personal_AI/actions/workflows/ci.yml/badge.svg)](https://github.com/AdityaPatel-25/Personal_AI/actions/workflows/ci.yml)
+
 > **Milestone:** Chat & generation powered by Groq (`llama-3.3-70b-versatile`), RAG knowledge base pipeline using ChromaDB (persistent vector store) powered by built-in `DefaultEmbeddingFunction` (ONNX `all-MiniLM-L6-v2`), configurable text chunking with paragraph awareness, automated & manual indexing CLI (`scripts/index_data.py`), sample topic notes in `/data`, and context-augmented streaming chat.
 
 ---
@@ -21,6 +23,11 @@ Personal_AI/
 ├── scripts/
 │   ├── index_data.py         # CLI script to (re)index notes & test retrieval
 │   └── eval_retrieval.py     # Retrieval evaluation harness (Top-1, Top-3 accuracy)
+├── tests/                    # Automated unit & integration tests (pytest)
+│   ├── conftest.py           # Pytest fixtures (temporary DB, Chroma & Groq mocks)
+│   ├── test_chunking.py      # Text chunk size, overlap, empty input & code block tests
+│   ├── test_api.py           # FastAPI endpoints (/chat validation, /conversations, /rag/status)
+│   └── test_tools.py         # Curated problem lookup & SQLite submission tracking
 ├── backend/
 │   ├── main.py               # FastAPI application, CORS setup & router registration
 │   ├── chat.py               # Groq streaming logic (llama-3.3-70b-versatile), multi-turn context, RAG injection
@@ -308,6 +315,16 @@ python scripts/eval_retrieval.py --questions-path eval/questions.json --top-k 5
 - **Top-3 Accuracy**: Percentage of questions where the expected note file appears within the Top-3 chunks.
 - **Per-Question PASS/FAIL**: Summary table displaying the target document, top-1 retrieved document, similarity score, and match rank.
 - **Average Similarity**: Average cosine similarity score of top-retrieved context chunks across the benchmark dataset.
+
+### 6. Automated Testing & Continuous Integration
+Run the automated test suite locally:
+
+```bash
+# Run all unit and integration tests with pytest:
+pytest -v
+```
+
+All tests execute fully isolated using temporary SQLite databases, temporary ChromaDB stores, and mocked Groq clients (requiring no external network calls or API keys).
 
 ---
 
