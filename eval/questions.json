@@ -1,0 +1,98 @@
+[
+  {
+    "q": "What invariant does binary search on answer maintain?",
+    "expected_source": "binary_search.md"
+  },
+  {
+    "q": "How do you calculate an overflow-safe midpoint in binary search?",
+    "expected_source": "binary_search.md"
+  },
+  {
+    "q": "What is the difference between lower_bound and upper_bound in bisect?",
+    "expected_source": "binary_search.md"
+  },
+  {
+    "q": "How does the two-pointer technique work for Container With Most Water?",
+    "expected_source": "binary_search.md"
+  },
+  {
+    "q": "How does Floyd's Tortoise and Hare detect cycles in a linked list?",
+    "expected_source": "binary_search.md"
+  },
+  {
+    "q": "When do you expand and shrink a variable size sliding window?",
+    "expected_source": "binary_search.md"
+  },
+  {
+    "q": "What are the two core requirements for a problem to be solved with dynamic programming?",
+    "expected_source": "dynamic_programming.md"
+  },
+  {
+    "q": "Why do we iterate weights backwards in the 1D space-optimized 0/1 knapsack?",
+    "expected_source": "dynamic_programming.md"
+  },
+  {
+    "q": "What are the trade-offs between top-down memoization and bottom-up tabulation?",
+    "expected_source": "dynamic_programming.md"
+  },
+  {
+    "q": "How do you achieve O(N log N) time complexity for Longest Increasing Subsequence?",
+    "expected_source": "dynamic_programming.md"
+  },
+  {
+    "q": "How does interval dynamic programming choose the order of loop transitions?",
+    "expected_source": "dynamic_programming.md"
+  },
+  {
+    "q": "What is the recurrence relation for Edit Distance when characters do not match?",
+    "expected_source": "dynamic_programming.md"
+  },
+  {
+    "q": "How does union by rank work in DSU?",
+    "expected_source": "graph_algorithms.md"
+  },
+  {
+    "q": "Why does Dijkstra's algorithm fail on graphs with negative edge weights?",
+    "expected_source": "graph_algorithms.md"
+  },
+  {
+    "q": "How does Kahn's algorithm detect cycles during topological sort?",
+    "expected_source": "graph_algorithms.md"
+  },
+  {
+    "q": "How does 3-color DFS detect directed cycles in a graph?",
+    "expected_source": "graph_algorithms.md"
+  },
+  {
+    "q": "How does the Bellman-Ford algorithm detect negative weight cycles?",
+    "expected_source": "graph_algorithms.md"
+  },
+  {
+    "q": "What is the difference between Kruskal's and Prim's algorithms for MST?",
+    "expected_source": "graph_algorithms.md"
+  },
+  {
+    "q": "How do you find the Lowest Common Ancestor in a Binary Search Tree?",
+    "expected_source": "trees_and_heaps.md"
+  },
+  {
+    "q": "How does the two heaps pattern find the median of a streaming dataset?",
+    "expected_source": "trees_and_heaps.md"
+  },
+  {
+    "q": "How do you implement a max-heap in Python using heapq?",
+    "expected_source": "trees_and_heaps.md"
+  },
+  {
+    "q": "How is the maximum path sum calculated at each node in a binary tree?",
+    "expected_source": "trees_and_heaps.md"
+  },
+  {
+    "q": "What is the time complexity and structure of insert and startsWith in a Trie?",
+    "expected_source": "trees_and_heaps.md"
+  },
+  {
+    "q": "Why does an inorder traversal of a Binary Search Tree visit nodes in sorted order?",
+    "expected_source": "trees_and_heaps.md"
+  }
+]
