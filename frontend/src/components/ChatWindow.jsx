@@ -336,8 +336,9 @@ export default function ChatWindow() {
           errorTitle = 'Invalid API Key (401)';
           helpText = 'Check GROQ_API_KEY in your .env file.';
         } else if (response.status === 429) {
-          errorTitle = 'Groq Rate Limit Reached (429)';
-          helpText = 'Please wait a moment and click Retry.';
+          errorTitle = 'Rate Limit Reached (429)';
+          errorDetail = "You're sending messages too quickly, try again in a minute";
+          helpText = 'Please wait a minute before sending your next message.';
         } else if (response.status >= 500) {
           errorTitle = `Server Internal Error (${response.status})`;
           helpText = 'Inspect your FastAPI terminal console for the traceback.';
@@ -347,7 +348,8 @@ export default function ChatWindow() {
           title: errorTitle,
           message: errorDetail,
           help: helpText,
-          type: 'server',
+          type: response.status === 429 ? 'rate_limit' : 'server',
+          status: response.status,
         };
       }
 
@@ -451,7 +453,7 @@ export default function ChatWindow() {
           help: 'Check your internet connection or verify the backend is running, then click Retry.',
           type: 'timeout',
         });
-      } else if (err.type === 'server') {
+      } else if (err.type === 'server' || err.type === 'rate_limit' || err.status === 429) {
         setError(err);
       } else if (
         err instanceof TypeError ||

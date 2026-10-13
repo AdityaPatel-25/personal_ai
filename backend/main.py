@@ -3,6 +3,7 @@ import os
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 
 # Configure logging with standard format
 logging.basicConfig(
@@ -13,10 +14,10 @@ logger = logging.getLogger(__name__)
 
 # Enable flexible imports whether running from root or from within backend/
 try:
-    from backend.chat import router as chat_router
+    from backend.chat import router as chat_router, limiter
     from backend.tools import router as tools_router
 except ImportError:
-    from chat import router as chat_router
+    from chat import router as chat_router, limiter
     from tools import router as tools_router
 
 app = FastAPI(
@@ -47,6 +48,22 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Conversation-Id", "X-Rag-Chunks", "X-Rag-Sources"],
 )
+
+# Rate limiter state registration
+app.state.limiter = limiter
+
+# Rate limit exception handler (returns clear 429 JSON message)
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    client_ip = request.client.host if request.client else "unknown"
+    logger.warning("Rate limit exceeded for %s from IP %s: %s", request.url.path, client_ip, exc)
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": "Rate limit exceeded. You're sending messages too quickly, try again in a minute.",
+            "error_type": "RateLimitExceeded",
+        },
+    )
 
 # Global unhandled exception handler to guarantee clean JSON errors with proper status codes
 @app.exception_handler(Exception)

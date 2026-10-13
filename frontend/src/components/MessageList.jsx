@@ -126,6 +126,14 @@ export default function MessageList({
       };
     }
     const errStr = String(error);
+    if (errStr.includes('429') || errStr.toLowerCase().includes('rate limit') || errStr.toLowerCase().includes('too quickly')) {
+      return {
+        title: 'Rate Limit Reached (429)',
+        message: "You're sending messages too quickly, try again in a minute",
+        help: 'Wait a minute for the quota window to reset, then try again.',
+        type: 'rate_limit',
+      };
+    }
     if (errStr.includes('Backend Unreachable') || errStr.includes('Failed to fetch')) {
       return {
         title: 'Backend Unreachable',

@@ -40,11 +40,14 @@ def mock_groq(monkeypatch):
     """Mocks Groq AsyncGroq client to prevent network calls."""
     monkeypatch.setenv("GROQ_API_KEY", "gsk_mock_test_key_1234567890")
 
+    async def mock_stream(*args, **kwargs):
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta.content = "Mock streaming token"
+        yield chunk
+
     mock_client = MagicMock()
-    # Mock chat completion create
-    mock_chat_completion = MagicMock()
-    mock_client.chat.completions.create = AsyncMock(return_value=mock_chat_completion)
-    # Mock audio transcription create
+    mock_client.chat.completions.create = AsyncMock(side_effect=lambda **kw: mock_stream())
     mock_client.audio.transcriptions.create = AsyncMock(
         return_value=MagicMock(text="Mock transcribed audio text")
     )

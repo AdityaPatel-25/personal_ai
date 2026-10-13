@@ -23,10 +23,25 @@ try:
 except ImportError:
     import db, rag
 
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
 # Load environment variables (.env in current directory or parent directories)
 load_dotenv(find_dotenv(usecwd=True))
 
 logger = logging.getLogger(__name__)
+
+# Per-IP rate limiting configuration (configurable via environment variables)
+# Defaults: 10 requests per minute and 100 requests per day per IP
+DEFAULT_CHAT_RATE_LIMIT = "10/minute,100/day"
+CHAT_RATE_LIMIT = os.getenv(
+    "CHAT_RATE_LIMIT",
+    os.getenv(
+        "RATE_LIMIT_CHAT",
+        f"{os.getenv('CHAT_RATE_LIMIT_PER_MINUTE', '10/minute')},{os.getenv('CHAT_RATE_LIMIT_PER_DAY', '100/day')}",
+    ),
+)
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter()
 
@@ -357,7 +372,8 @@ async def delete_conversation_endpoint(conversation_id: str):
 
 
 @router.post("/chat")
-async def chat(request_body: ChatRequest, raw_request: Request):
+@limiter.limit(CHAT_RATE_LIMIT)
+async def chat(request_body: ChatRequest, request: Request):
     """Streaming chat endpoint for DSA coaching with persistent memory & RAG retrieval.
 
     Accepts:
@@ -478,7 +494,7 @@ async def chat(request_body: ChatRequest, raw_request: Request):
             {"role": "user", "content": augmented_prompt},
         ]
 
-    accept_header = raw_request.headers.get("accept", "")
+    accept_header = request.headers.get("accept", "")
     response_headers = {
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
