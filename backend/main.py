@@ -1,4 +1,5 @@
 import logging
+import os
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -24,6 +25,29 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# CORS configuration for frontend clients
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://personallai.vercel.app",
+]
+env_origins = os.getenv("ALLOWED_ORIGINS", "")
+if env_origins:
+    for origin in env_origins.split(","):
+        cleaned = origin.strip().rstrip("/")
+        if cleaned and cleaned not in origins:
+            origins.append(cleaned)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["X-Conversation-Id", "X-Rag-Chunks", "X-Rag-Sources"],
+)
+
 # Global unhandled exception handler to guarantee clean JSON errors with proper status codes
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -35,23 +59,6 @@ async def global_exception_handler(request: Request, exc: Exception):
             "error_type": exc.__class__.__name__,
         },
     )
-
-# CORS configuration for frontend clients (e.g., Vite/React on localhost:5173)
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:5174",
-]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 # Register route handlers
 app.include_router(chat_router)
