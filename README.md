@@ -1,8 +1,209 @@
-# Personal AI — Competitive Programming & DSA Coach
+# AlgoCoach AI
+
+> An intelligent, context-grounded AI coach for Competitive Programming and Data Structures & Algorithms, powered by Groq Llama-3.3-70B, ChromaDB RAG, and persistent SQLite memory.
 
 [![CI](https://github.com/AdityaPatel-25/Personal_AI/actions/workflows/ci.yml/badge.svg)](https://github.com/AdityaPatel-25/Personal_AI/actions/workflows/ci.yml)
+[![Live Demo](https://img.shields.io/badge/Demo-personallai.vercel.app-blue)](https://personallai.vercel.app)
+[![Backend API](https://img.shields.io/badge/API-Render-green)](https://personal-ai-p018.onrender.com)
 
-> **Milestone:** Chat & generation powered by Groq (`llama-3.3-70b-versatile`), RAG knowledge base pipeline using ChromaDB (persistent vector store) powered by built-in `DefaultEmbeddingFunction` (ONNX `all-MiniLM-L6-v2`), configurable text chunking with paragraph awareness, automated & manual indexing CLI (`scripts/index_data.py`), sample topic notes in `/data`, and context-augmented streaming chat.
+- **Live Frontend**: [https://personallai.vercel.app](https://personallai.vercel.app)
+- **Backend API**: [https://personal-ai-p018.onrender.com](https://personal-ai-p018.onrender.com)
+
+![AlgoCoach AI Interface](docs/screenshot.png)
+
+---
+
+## 🚀 Features
+
+- **Streaming Chat**: Real-time token-by-token streaming using Server-Sent Events (SSE) and chunked HTTP transfer encoding (`POST /chat`), powered by Groq's high-throughput `llama-3.3-70b-versatile` (with automatic fallback to `openai/gpt-oss-120b`).
+- **Persistent Memory (SQLite)**: Automatically tracks conversations and message histories (`conversations` and `messages` tables). Injects the last 14 messages (`CONTEXT_MESSAGE_LIMIT = 14`) into LLM prompt turns for conversational coherence across sessions.
+- **RAG over DSA Notes (ChromaDB)**: Curated algorithmic notes covering Binary Search, Dynamic Programming, Graphs, and Trees & Heaps in `data/`. Vector search grounds responses with relevant patterns, invariants, and templates before answering.
+- **Action Tool Calling**:
+  - `suggest_problem`: Curated catalog lookup across LeetCode/Codeforces patterns (e.g., 0/1 Knapsack, Course Schedule, Koko Eating Bananas, LCA) with informal topic alias normalization.
+  - `get_weak_topics`: Scans chat history for struggle indicators (`confused`, `stuck`, `hard`, `wa`, `tle`) and past verdicts to calculate algorithmic weakness scores and recommend targeted practice.
+  - `log_submission`: Records problem-solving verdicts (`Accepted`, `Wrong Answer`, `Time Limit Exceeded`, `Runtime Error`) directly into SQLite.
+- **Per-IP Rate Limiting**: Built with `slowapi`, protecting `POST /chat` with a default quota of 10 requests per minute and 100 requests per day per IP address (configurable via `CHAT_RATE_LIMIT`). Unaffected health endpoints (`GET /rag/status`) allow uninterrupted keep-alive pinging.
+- **Voice Input**: Integrated browser recording via `MediaRecorder` API and backend speech-to-text transcription (`POST /transcribe`) powered by Groq's `whisper-large-v3-turbo` model for hands-free problem discussions.
+
+---
+
+## 🛠️ Tech Stack
+
+| Component | Technology | Details |
+|---|---|---|
+| **Frontend** | React 18, Vite | Single-page application with streaming response decoding via `ReadableStream` |
+| **Styling & UI** | Tailwind CSS, Lucide React | Dark aesthetic, responsive drawer, modal dialogs, and code highlighting |
+| **Backend** | FastAPI, Uvicorn | Asynchronous Python REST API with SSE, CORS middleware, and custom exception handling |
+| **LLM Engine** | Groq API (`llama-3.3-70b-versatile`) | High-speed cloud LLM inference with fallback to `openai/gpt-oss-120b` |
+| **Speech-to-Text** | Groq Whisper (`whisper-large-v3-turbo`) | High-speed audio transcription for voice inputs (`POST /transcribe`) |
+| **Vector Store** | ChromaDB (`chromadb>=1.5.0`) | Local persistent vector storage with cosine distance metric (`hnsw:space: cosine`) |
+| **Embedding Model** | ONNX `all-MiniLM-L6-v2` (384 dims) | ChromaDB `DefaultEmbeddingFunction` executing 100% locally on CPU (<50MB RAM) |
+| **Database** | SQLite 3 (`sqlite3`) | Local transactional persistence for conversations, messages, and submissions |
+| **Rate Limiter** | SlowAPI | Token bucket / sliding window per-IP rate limiting |
+| **Frontend Hosting**| Vercel | Global edge CDN deployment ([personallai.vercel.app](https://personallai.vercel.app)) |
+| **Backend Hosting** | Render | Cloud container deployment ([personal-ai-p018.onrender.com](https://personal-ai-p018.onrender.com)) |
+| **CI / Automation** | GitHub Actions | Automated test runner on Python 3.12 (`.github/workflows/ci.yml`) |
+
+---
+
+## 🧠 How It Works
+
+### 1. Chat Flow
+1. **User Request**: The student enters a prompt or records an audio query (transcribed into text via Groq Whisper).
+2. **Rate Limit Inspection**: `slowapi` checks the client IP against configured window limits (10/min, 100/day). If exceeded, a clean HTTP 429 JSON response is returned immediately.
+3. **Database Logging**: The incoming user prompt is saved to SQLite, and conversation titles are automatically generated or resolved.
+4. **RAG Semantic Retrieval**: The prompt is embedded and queried against the local ChromaDB vector store to retrieve the top 4 relevant note snippets (`top_k = 4`).
+5. **Prompt Augmentation**: Recent chat turns (up to 14 messages) are assembled with system instructions and the retrieved DSA notes injected directly into the active prompt turn.
+6. **Streaming Generation**: The request streams from Groq (`stream=True`) and emits SSE/chunked bytes to the frontend. Custom HTTP headers (`X-Conversation-Id`, `X-Rag-Chunks`, `X-Rag-Sources`) pass retrieval provenance metadata.
+7. **Client Rendering**: React decodes incoming bytes incrementally with `TextDecoder` and `ReadableStreamDefaultReader`, displaying the response token-by-token. The complete assistant response is committed to SQLite on finish.
+
+### 2. RAG Pipeline
+- **Chunking Strategy**: Paragraph-aware recursive chunking (`chunk_text` in `backend/rag.py`). Documents are split on double newlines (`\n\s*\n`). If any paragraph exceeds `chunk_size`, it is split by lines while keeping multi-line code blocks intact without mid-line truncation. Overlapping sliding windows are then assembled.
+- **Default Chunking Parameters**:
+  - `chunk_size = 600` characters (`DEFAULT_CHUNK_SIZE`)
+  - `chunk_overlap = 120` characters (`DEFAULT_CHUNK_OVERLAP`, ~20% overlap)
+- **Embedding Model**: ChromaDB's built-in `DefaultEmbeddingFunction` using ONNX runtime and `all-MiniLM-L6-v2` (384 dimensions). Executes purely on local CPU with low memory overhead, avoiding PyTorch or sentence-transformers dependencies.
+- **Retrieval Metric & Top-K**: Chunks are retrieved with cosine distance, mapped to similarity scores (`similarity = 1.0 - distance`). Defaults to `top_k = 4` in chat generation and `top_k = 3` in evaluation scripts.
+
+### 3. Tool-Calling Loop
+- **Endpoints**: Tools are exposed via REST endpoints `GET /tools` and `POST /tools/execute`.
+- **UI Integration**: Frontend modals allow interactive execution of coaching tools:
+  - `suggest_problem`: Resolves topic aliases (e.g., `dp`, `bfs`, `tree`) against `TOPIC_ALIASES` and returns curated problem templates, patterns, and difficulty levels from `CURATED_PROBLEMS`.
+  - `get_weak_topics`: Scans chat history for struggle phrases and aggregates submission outcomes into a weighted weakness score (`(struggles * 3.0) + (failed * 4.0) - (accepted * 2.0)`).
+  - `log_submission`: Standardizes verdicts (`Accepted`, `Wrong Answer`, `Time Limit Exceeded`) and records entries in the SQLite `submissions` table.
+
+---
+
+## 📊 Retrieval Evaluation
+
+Evaluation benchmarks are measured locally against 24 hand-crafted questions across all 4 topic note files using [scripts/eval_retrieval.py](scripts/eval_retrieval.py) (stored in [eval/results.json](eval/results.json)):
+
+| Configuration (Chunk Size / Overlap) | Benchmark Questions | Top-1 Accuracy | Top-3 Accuracy | Average Similarity |
+|---|---|---|---|---|
+| `chunk_size=600`, `chunk_overlap=120` | 24 questions across 4 note files | **95.8%** (23 / 24) | **100.0%** (24 / 24) | `0.5859` |
+
+Run the evaluation harness:
+```bash
+# Evaluate retrieval accuracy and save results to eval/results.json:
+python scripts/eval_retrieval.py --top-k 3 --json-out eval/results.json
+```
+
+---
+
+## 🧪 Testing and CI
+
+### Running Tests Locally
+Automated unit and integration tests use `pytest`:
+
+```bash
+# Run the test suite:
+pytest -v
+```
+
+### What's Covered
+- **[tests/test_chunking.py](tests/test_chunking.py)**:
+  - `chunk_text` respects `chunk_size` character limits.
+  - Overlap carries over between consecutive chunks.
+  - Empty, whitespace, and newline inputs return empty lists.
+  - Multi-line code blocks are preserved line-by-line without mid-line splitting.
+- **[tests/test_api.py](tests/test_api.py)**:
+  - `POST /chat` rejects empty/whitespace messages with a 4xx error (422).
+  - `GET /conversations` returns a list and persists newly created threads.
+  - `GET /rag/status` returns expected diagnostic keys (`status`, `collection_name`, `total_chunks`, `chroma_db_path`, `embedding_model`).
+  - Per-IP rate limiting on `POST /chat` triggers an HTTP 429 JSON response when limits are exceeded.
+  - `GET /rag/status` is not rate-limited, allowing keep-alive pings.
+- **[tests/test_tools.py](tests/test_tools.py)**:
+  - `suggest_problem` returns valid problems for all supported topics and aliases.
+  - `suggest_problem` handles unknown topics cleanly without unhandled exceptions.
+  - `log_submission` inserts rows into the temporary SQLite submissions database.
+- **Test Isolation**: [tests/conftest.py](tests/conftest.py) supplies isolated test fixtures:
+  - `temp_db`: Dedicated temporary SQLite database per test.
+  - `temp_chroma`: Dedicated temporary ChromaDB directory per test.
+  - `mock_groq`: Mocks `AsyncGroq` chat completion streams and Whisper transcriptions (no network calls or real API keys needed).
+
+### Continuous Integration (CI)
+A GitHub Actions workflow ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs on every push and pull request to `main`:
+- Sets up Python 3.12.
+- Installs `backend/requirements.txt`, `pytest`, and `httpx`.
+- Executes `pytest -v` (pure testing without calling external LLM APIs).
+
+---
+
+## 💻 Running Locally
+
+### 1. Prerequisites
+- **Python 3.10+** (tested on 3.10, 3.12, 3.14)
+- **Node.js 18+** & **npm**
+- A Groq API key from [Groq Console](https://console.groq.com/keys)
+
+### 2. Environment Configuration
+Copy `.env.example` to `.env` in the repository root:
+
+```bash
+cp .env.example .env
+```
+
+Configure your environment variables in `.env`:
+```env
+# Required: Groq API Key
+GROQ_API_KEY=gsk_your_actual_key_here
+
+# Optional: Groq model identifier (defaults to llama-3.3-70b-versatile)
+GROQ_MODEL=llama-3.3-70b-versatile
+
+# Frontend API URL (points to local FastAPI backend)
+VITE_API_URL=http://localhost:8000
+
+# Optional: Chat endpoint per-IP rate limits (default: 10/minute,100/day)
+CHAT_RATE_LIMIT=10/minute,100/day
+```
+
+### 3. Backend Setup
+Create and activate a virtual environment, then install dependencies:
+
+```bash
+# Windows:
+python -m venv .venv
+.\.venv\Scripts\activate
+
+# macOS / Linux:
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install requirements:
+pip install -r backend/requirements.txt
+```
+
+### 4. Index Knowledge Base Notes
+Build the local ChromaDB vector database from markdown notes in `data/`:
+
+```bash
+python scripts/index_data.py
+```
+
+### 5. Start Backend Server
+```bash
+uvicorn backend.main:app --reload --port 8000
+```
+Backend API and interactive documentation are available at `http://localhost:8000/docs`.
+
+### 6. Frontend Setup
+In a new terminal window:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Open `http://localhost:5173` in your browser.
+
+---
+
+## 🌐 Deployment Notes
+
+- **Backend**: Hosted on **Render** at [https://personal-ai-p018.onrender.com](https://personal-ai-p018.onrender.com).
+- **Frontend**: Hosted on **Vercel** at [https://personallai.vercel.app](https://personallai.vercel.app).
+- **Free-Tier Cold Starts**: Render free-tier web services spin down automatically after 15 minutes of inactivity. When a request arrives after inactivity, the instance requires approximately **~50 seconds** to spin up and load the ChromaDB vector database. The frontend handles this with an initial loading indicator, a 30-second timeout warning, and a Retry button.
 
 ---
 
@@ -10,331 +211,57 @@
 
 ```text
 Personal_AI/
-├── .env.example              # Example environment variables (API key)
-├── README.md                 # Setup, run commands, RAG testing & architecture
+├── .env.example              # Template environment variables
+├── README.md                 # Project architecture, setup & evaluation guide
+├── .github/
+│   └── workflows/
+│       └── ci.yml            # GitHub Actions CI workflow (Python 3.12 + pytest)
 ├── data/                     # DSA topic notes for RAG indexing
+│   ├── binary_search.md
 │   ├── dynamic_programming.md
 │   ├── graph_algorithms.md
-│   ├── binary_search.md
 │   └── trees_and_heaps.md
-├── eval/                     # RAG evaluation benchmark dataset & metrics
-│   ├── questions.json        # 24 benchmark questions covering all notes
-│   └── results.json          # Exported evaluation metrics & rankings
+├── eval/                     # Retrieval evaluation benchmark suite
+│   ├── questions.json        # 24 benchmark questions across all notes
+│   └── results.json          # Benchmark accuracy report (Top-1, Top-3, similarity)
 ├── scripts/
-│   ├── index_data.py         # CLI script to (re)index notes & test retrieval
-│   └── eval_retrieval.py     # Retrieval evaluation harness (Top-1, Top-3 accuracy)
-├── tests/                    # Automated unit & integration tests (pytest)
-│   ├── conftest.py           # Pytest fixtures (temporary DB, Chroma & Groq mocks)
-│   ├── test_chunking.py      # Text chunk size, overlap, empty input & code block tests
-│   ├── test_api.py           # FastAPI endpoints (/chat validation, /conversations, /rag/status)
-│   └── test_tools.py         # Curated problem lookup & SQLite submission tracking
+│   ├── index_data.py         # CLI tool to (re)index notes into ChromaDB
+│   └── eval_retrieval.py     # Retrieval accuracy evaluation harness
+├── tests/                    # Automated pytest test suite
+│   ├── conftest.py           # Pytest fixtures (temporary DB, Chroma, Groq mock)
+│   ├── test_chunking.py      # Chunk size, overlap, empty input & code block tests
+│   ├── test_api.py           # FastAPI endpoints, validation, and rate limiting tests
+│   └── test_tools.py         # Problem suggestion and submission logging tests
 ├── backend/
-│   ├── main.py               # FastAPI application, CORS setup & router registration
-│   ├── chat.py               # Groq streaming logic (llama-3.3-70b-versatile), multi-turn context, RAG injection
-│   ├── db.py                 # SQLite database persistence (conversations & messages)
-│   ├── rag.py                # RAG pipeline: ChromaDB vector store & ONNX DefaultEmbeddingFunction
-│   ├── tools.py              # Placeholder for Day 5: Code Execution Sandbox & Tools
-│   ├── chroma_db/            # Persistent ChromaDB vector database files
-│   ├── requirements.txt      # Python dependencies (groq, chromadb, fastapi)
-│   └── .env.example          # Backend-local env template
+│   ├── main.py               # FastAPI application entrypoint & CORS middleware
+│   ├── chat.py               # Groq streaming, Whisper audio transcription, RAG injection
+│   ├── db.py                 # SQLite database persistence (conversations, messages, submissions)
+│   ├── rag.py                # ChromaDB vector store & ONNX embedding pipeline
+│   ├── tools.py              # Action tools (suggest_problem, get_weak_topics, log_submission)
+│   ├── requirements.txt      # Python dependencies
+│   └── chroma_db/            # Local persistent ChromaDB files
 └── frontend/
-    ├── index.html            # Main HTML with Google Fonts (Inter, JetBrains Mono)
-    ├── package.json          # Frontend dependencies & scripts
-    ├── vite.config.js        # Vite config with Tailwind CSS plugin & port 5173
+    ├── index.html            # HTML entrypoint
+    ├── vite.config.js        # Vite configuration
+    ├── package.json          # Node dependencies
     └── src/
-        ├── main.jsx          # React DOM entrypoint
-        ├── App.jsx           # Root application component
-        ├── index.css         # Tailwind directives, animations & custom scrollbars
+        ├── App.jsx           # Root layout component
         └── components/
-            ├── Sidebar.jsx      # Conversation history drawer, new chat & deletion
-            ├── ChatWindow.jsx   # Top-level state orchestration, DB sync & streaming
-            ├── MessageList.jsx  # Conversation bubbles, markdown formatting, copy code
-            └── MessageInput.jsx # Input textarea, keybindings (Enter/Shift+Enter), send/stop
-```
-
-
----
-
-## 🚀 Quickstart & Setup
-
-### 1. Prerequisites
-- **Python 3.10+** (tested on Python 3.14)
-- **Node.js 18+** & **npm** (tested on Node v25 / npm 11)
-- A Groq API key from [Groq Console](https://console.groq.com/keys)
-
----
-
-### 2. Backend Setup
-
-#### A. Create and Activate Virtual Environment
-
-**Windows (PowerShell):**
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-```
-
-**macOS / Linux:**
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-#### B. Install Python Dependencies
-```bash
-pip install -r backend/requirements.txt
-```
-
-#### C. Configure Environment Variables
-Copy `.env.example` to `.env` in the root directory:
-
-```bash
-cp .env.example .env
-```
-
-Open `.env` and set your Groq API key:
-```env
-GROQ_API_KEY=gsk_your_actual_key_here
-GROQ_MODEL=llama-3.3-70b-versatile
+            ├── ChatWindow.jsx   # Streaming state orchestration & error handling
+            ├── MessageList.jsx  # Markdown messages, code blocks & diagnostic cards
+            ├── MessageInput.jsx # Input textarea, keybindings & audio recorder
+            └── Sidebar.jsx      # Conversation thread drawer & history management
 ```
 
 ---
 
-### 3. Frontend Setup
+## ⚠️ Limitations and Future Work
 
-Navigate into the `frontend/` folder and install dependencies:
-
-```bash
-cd frontend
-npm install
-```
-
----
-
-## 🏃 Running Backend + Frontend Together
-
-To run both services concurrently, open two terminal windows:
-
-### Terminal 1: Start Backend (FastAPI on Port 8000)
-
-**From project root:**
-```powershell
-# Windows PowerShell
-.\.venv\Scripts\Activate.ps1
-uvicorn backend.main:app --reload --port 8000
-```
-
-```bash
-# macOS / Linux
-source .venv/bin/activate
-uvicorn backend.main:app --reload --port 8000
-```
-
-*The backend will be live at [http://localhost:8000](http://localhost:8000).*
-
----
-
-### Terminal 2: Start Frontend (Vite on Port 5173)
-
-**From project root:**
-```bash
-cd frontend
-npm run dev
-```
-
-*The frontend UI will be live at [http://localhost:5173](http://localhost:5173).*
-
-Open your browser to [http://localhost:5173](http://localhost:5173) to start practicing competitive programming with your AI coach!
-
----
-
-## 🧪 Testing the Streaming Endpoint with `curl`
-
-> **Note on Windows PowerShell:** Use `curl.exe` instead of `curl` (to avoid PowerShell's `Invoke-WebRequest` alias). The `-N` (or `--no-buffer`) flag is **critical** because it instructs curl to output incoming chunks immediately rather than buffering them.
-
-### Option A: Chunked Plain Text Streaming (Default)
-
-Streams tokens directly to the terminal as words arrive:
-
-```bash
-curl -N -X POST http://localhost:8000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"message": "Explain Dijkstra algorithm in 3 short bullet points."}'
-```
-
-**Windows PowerShell:**
-```powershell
-curl.exe -N -X POST http://localhost:8000/chat -H "Content-Type: application/json" -d '{\"message\": \"Explain Dijkstra algorithm in 3 short bullet points.\"}'
-```
-
----
-
-### Option B: Server-Sent Events (SSE) Streaming
-
-Include `Accept: text/event-stream` to receive streaming Server-Sent Events frames:
-
-```bash
-curl -N -X POST http://localhost:8000/chat \
-  -H "Content-Type: application/json" \
-  -H "Accept: text/event-stream" \
-  -d '{"message": "What is the time complexity of QuickSort best vs worst case?"}'
-```
-
-**Windows PowerShell:**
-```powershell
-curl.exe -N -X POST http://localhost:8000/chat -H "Content-Type: application/json" -H "Accept: text/event-stream" -d '{\"message\": \"What is the time complexity of QuickSort best vs worst case?\"}'
-```
-
----
-
-## 🧠 How Streaming Works: End-to-End Deep Dive
-
-### 1. The Core Problem with Standard HTTP
-In standard HTTP/REST requests, the client issues a request and waits while the server finishes generating the entire text. For an LLM answering a complex algorithmic problem, this causes a 3 to 10 second delay with an empty screen before displaying a wall of text.
-
-```text
-Standard HTTP:
-[User Prompt] ──> [Server waits 6s for LLM to finish] ──> [Single Large Response Payload]
-```
-
-### 2. How the Frontend Consumes the Stream Incrementally
-
-With streaming, tokens are rendered in the browser in real time as they leave the model:
-
-```text
-Streaming Architecture:
-[User Prompt] ──> [FastAPI opens HTTP connection]
-                    │
-                    ├──> Chunk 1 ("To")     ──> [Browser ReadableStream reader.read()] ──> State += "To"     ──> [Renders]
-                    ├──> Chunk 2 (" solve") ──> [Browser ReadableStream reader.read()] ──> State += " solve" ──> [Renders]
-                    ├──> Chunk 3 (" this,") ──> [Browser ReadableStream reader.read()] ──> State += " this," ──> [Renders]
-                    │    ...
-                    └──> Stream Done (Connection closes)
-```
-
-Here is the exact step-by-step mechanism in `frontend/src/components/ChatWindow.jsx`:
-
-1. **`fetch` without buffering:**
-   ```javascript
-   const response = await fetch('http://localhost:8000/chat', {
-     method: 'POST',
-     headers: { 'Content-Type': 'application/json' },
-     body: JSON.stringify({ message: promptText }),
-     signal: abortController.signal,
-   });
-   ```
-   Unlike `await response.text()` or `await response.json()` (which deliberately buffer the full payload until EOF), the browser's `response.body` exposes a raw `ReadableStream`.
-
-2. **Reading the stream with `ReadableStreamDefaultReader`:**
-   ```javascript
-   const reader = response.body.getReader();
-   const decoder = new TextDecoder('utf-8');
-   ```
-   The `reader.read()` method returns a Promise that resolves whenever **at least one TCP network packet with payload bytes arrives**, rather than waiting for connection termination.
-
-3. **Incremental loop & React State updates:**
-   ```javascript
-   let accumulated = '';
-   while (true) {
-     const { done, value } = await reader.read();
-     if (done) break;
-
-     // Decode byte array Uint8Array to string
-     const chunkText = decoder.decode(value, { stream: true });
-     accumulated += chunkText;
-
-     // Update assistant message state
-     setMessages((prev) =>
-       prev.map((msg) =>
-         msg.id === assistantMessageId
-           ? { ...msg, content: accumulated }
-           : msg
-       )
-     );
-   }
-   ```
-   - `{ value }` is a `Uint8Array` containing the bytes emitted by FastAPI in that HTTP chunk.
-   - `decoder.decode(value, { stream: true })` turns raw bytes into text without cutting multi-byte UTF-8 code points in half.
-   - Each iteration updates React state (`messages`), triggering an immediate component re-render.
-   - Users visually see each word and code snippet appear in real time with virtually zero latency.
-
----
-
-## 📚 RAG Pipeline, Indexing & Verification
-
-> ℹ️ **Embedding Provider Notice:** The embedding provider uses ChromaDB's built-in `DefaultEmbeddingFunction` (ONNX `all-MiniLM-L6-v2`, 384 dimensions) with lazy client loading for fast startup and low memory usage (<512MB RAM). Re-indexing can be performed anytime via `python scripts/index_data.py`.
-
-### 1. (Re)Index DSA Notes into ChromaDB
-To rebuild the collection from scratch with the local embedding model:
-
-```bash
-# Clean rebuild with default chunking (chunk_size=600, overlap=120):
-python scripts/index_data.py
-```
-
-### 2. Verify Semantic Retrieval from the Terminal
-Test which chunks are retrieved for any question without starting the full server:
-
-```bash
-python scripts/index_data.py --query "How do I choose between BFS and DFS for graphs?" --test-only
-```
-
-### 3. Experiment with Custom Chunking Parameters
-```bash
-python scripts/index_data.py --chunk-size 800 --chunk-overlap 150 --query "What is 0/1 knapsack space optimization?"
-```
-
-### 4. RAG & Tools REST API Inspection Endpoints
-- **Check vector store status & count:**
-  `curl http://localhost:8000/rag/status`
-- **Inspect top-K retrieved chunks via HTTP:**
-  `curl "http://localhost:8000/rag/query?q=Dijkstra&top_k=3"`
-- **List registered action tools:**
-  `curl http://localhost:8000/tools`
-- **Execute an action tool:**
-  `curl -X POST http://localhost:8000/tools/execute -H "Content-Type: application/json" -d '{"name": "suggest_problem", "arguments": {"topic": "dynamic_programming"}}'`
-- **Response Headers:**
-  Calls to `POST /chat` automatically include `X-Rag-Chunks` and `X-Rag-Sources` headers showing which notes grounded the AI coach's response.
-
-### 5. Running the Retrieval Evaluation Harness
-A dedicated benchmark evaluation suite tests retrieval accuracy across all DSA note files using local vector search (zero LLM calls or API charges):
-
-```bash
-# Run retrieval evaluation with default parameters (top_k=3, eval/questions.json):
-python scripts/eval_retrieval.py
-
-# Evaluate with custom Top-K and export structured results to JSON:
-python scripts/eval_retrieval.py --top-k 3 --json-out eval/results.json
-
-# Use a custom benchmark questions file:
-python scripts/eval_retrieval.py --questions-path eval/questions.json --top-k 5
-```
-
-**Evaluation Report Includes:**
-- **Top-1 Accuracy**: Percentage of questions where the expected note file is retrieved at Rank 1.
-- **Top-3 Accuracy**: Percentage of questions where the expected note file appears within the Top-3 chunks.
-- **Per-Question PASS/FAIL**: Summary table displaying the target document, top-1 retrieved document, similarity score, and match rank.
-- **Average Similarity**: Average cosine similarity score of top-retrieved context chunks across the benchmark dataset.
-
-### 6. Automated Testing & Continuous Integration
-Run the automated test suite locally:
-
-```bash
-# Run all unit and integration tests with pytest:
-pytest -v
-```
-
-All tests execute fully isolated using temporary SQLite databases, temporary ChromaDB stores, and mocked Groq clients (requiring no external network calls or API keys).
-
----
-
-## 🛣️ Development Roadmap
-
-- [x] **Day 1: Backend Foundation & Streaming Chat Endpoint** (FastAPI, Groq SDK streaming with `llama-3.3-70b-versatile`, CORS, SSE & chunked HTTP).
-- [x] **Day 2: Modern Frontend** (React + Vite, Tailwind CSS, streaming token-by-token rendering, markdown code blocks).
-- [x] **Day 3: Database & Persistence** (SQLite conversations and messages schema, REST endpoints, multi-turn context, responsive history sidebar).
-- [x] **Day 4: RAG & Problem Knowledge Base** (ChromaDB persistent vector store, local `all-MiniLM-L6-v2` embeddings, configurable chunking, notes indexing, prompt context injection).
-- [x] **Day 5: Action Tools & Function Calling** (Curated problem lookup `suggest_problem`, history struggle analyzer `get_weak_topics`, persistent submission tracker `log_submission`).
-- [x] **Day 6: Polish, Error Handling & System Hardening** (Loading/typing indicator before first token, 30s request timeouts, human-readable error cards, responsive collapsible drawer layout, input validation, try/except error shielding across DB/RAG/Groq, and structured Python logging).
-
-
+- **Curated Note Corpus**: The RAG knowledge base currently indexes 4 core DSA topics (`binary_search.md`, `dynamic_programming.md`, `graph_algorithms.md`, `trees_and_heaps.md`). Expanding to Bit Manipulation, Trie, Backtracking, and Segment Trees is planned.
+- **Ephemeral Storage on Free Tier**: On free-tier cloud hosting (Render), disk storage is ephemeral; local SQLite and ChromaDB data reset if the container is redeployed. Transitioning to managed PostgreSQL (e.g., Supabase / Neon) and managed cloud vector search (e.g., Qdrant Cloud / Pinecone) will provide durable multi-region persistence.
+- **Single-User Architecture**: Conversations are stored locally without user authentication or multi-tenant isolation.
+- **Future Roadmap**:
+  - [ ] User authentication (OAuth / JWT via Supabase or Clerk).
+  - [ ] Multi-tenant isolation for conversations and submissions.
+  - [ ] Direct LeetCode API / Codeforces profile synchronization.
+  - [ ] Hybrid sparse/dense retrieval (BM25 + vector search reranking).
